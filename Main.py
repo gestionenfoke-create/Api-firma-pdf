@@ -1,0 +1,153 @@
+from flask import Flask, request, send_file
+import requests
+from io import BytesIO
+from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
+from PyPDF2 import PdfReader, PdfWriter
+from PIL import Image
+
+app = Flask(__name__)
+
+
+# 🔹 Endpoint de prueba (health check)
+@app.route("/ping")
+def ping():
+    return "ok"
+
+
+# 🔹 Endpoint principal
+@app.route("/firmar", methods=["GET"])
+def firmar_pdf():
+    try:
+        # 🔹 Parámetros
+        pdf_url = request.args.get("pdf_url")
+        firma_url = request.args.get("firma_url")
+        firma2_url = request.args.get("firma2_url")
+        fecha1 = request.args.get("fecha1")
+        fecha2 = request.args.get("fecha2")
+
+        if not pdf_url:
+            return {"error": "Falta pdf_url"}, 400
+
+        # 🔹 Descargar PDF
+        pdf_response = requests.get(pdf_url)
+        if pdf_response.status_code != 200:
+            return {"error": "No se pudo descargar el PDF"}, 400
+
+        pdf_bytes = pdf_response.content
+
+        # 🔹 Función para procesar firmas
+        def procesar_firma(url):
+            if not url:
+                return None
+
+            headers = {
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "image/*"
+            }
+
+            r = requests.get(url, headers=headers)
+
+            if r.status_code != 200:
+                return None
+
+            if "image" not in r.headers.get("Content-Type", ""):
+                return None
+
+            img = Image.open(BytesIO(r.content)).convert("RGBA")
+
+            # 🔥 eliminar fondo negro
+            background = Image.new("RGB", img.size, (255, 255, 255))
+            background.paste(img, mask=img.split()[3])
+
+            buffer = BytesIO()
+            background.save(buffer, format="PNG")
+            buffer.seek(0)
+
+            return ImageReader(buffer)
+
+        # 🔹 Procesar firmas
+        firma1 = procesar_firma(firma_url)
+        firma2 = procesar_firma(firma2_url)
+
+        # 🔹 Preparar PDF
+        original = PdfReader(BytesIO(pdf_bytes))
+        last_page = original.pages[-1]
+
+        width = float(last_page.mediabox.width)
+
+        packet = BytesIO()
+        c = canvas.Canvas(packet)
+
+        # 🖊 FIRMA DERECHA
+        if firma1:
+            img_w, img_h = firma1.getSize()
+            desired_h = 60
+            scale = desired_h / img_h
+            new_w = img_w * scale
+
+            c.drawImage(
+                firma1,
+                x=width - 200,
+                y=80,
+                width=new_w,
+                height=desired_h,
+                mask='auto'
+            )
+
+            if fecha1:
+                c.setFont("Helvetica", 8)
+                c.drawString(width - 200, 70, f"Fecha Firma: {fecha1}")
+
+        # 🖊 FIRMA IZQUIERDA
+        if firma2:
+            img_w2, img_h2 = firma2.getSize()
+            desired_h2 = 60
+            scale2 = desired_h2 / img_h2
+            new_w2 = img_w2 * scale2
+
+            c.drawImage(
+                firma2,
+                x=80,
+                y=80,
+                width=new_w2,
+                height=desired_h2,
+                mask='auto'
+            )
+
+            if fecha2:
+                c.setFont("Helvetica", 8)
+                c.drawString(80, 70, f"Fecha Firma: {fecha2}")
+
+        c.save()
+        packet.seek(0)
+
+        # 🔹 Merge PDF
+        try:
+            overlay = PdfReader(packet)
+            overlay_page = overlay.pages[0]
+        except:
+            overlay_page = None
+
+        writer = PdfWriter()
+
+        for i in range(len(original.pages)):
+            page = original.pages[i]
+            if overlay_page and i == len(original.pages) - 1:
+                page.merge_page(overlay_page)
+            writer.add_page(page)
+
+        output = BytesIO()
+        writer.write(output)
+        output.seek(0)
+
+        return send_file(
+            output,
+            download_name="firmado.pdf",
+            as_attachment=True,
+            mimetype="application/pdf"
+        )
+
+    except Exception as e:
+        print("ERROR:", str(e))
+        return {"error": str(e)}, 500
