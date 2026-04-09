@@ -148,7 +148,7 @@ def firmar_pdf():
         file_id = subir_a_drive(output, filename)
         print("FILE ID:", file_id)
 
-        ruta_appsheet = f"Prime_Firma_PDF_Files/{filename}"
+        ruta_appsheet = f"Prime_Firma_PDF_Files_/{filename}"
 
         return {
             "file": ruta_appsheet,
