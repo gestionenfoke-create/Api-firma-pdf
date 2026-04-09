@@ -149,7 +149,12 @@ def generar_imagen():
         if not pdf_url:
             return {"error": "Falta pdf_url"}, 400
 
-        response = requests.get(pdf_url)
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/pdf"
+        }
+
+        response = requests.get(pdf_url, headers=headers)
 
         if response.status_code != 200:
             return {"error": "No se pudo descargar PDF"}, 400
