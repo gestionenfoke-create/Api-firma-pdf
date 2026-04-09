@@ -6,7 +6,13 @@ from reportlab.lib.utils import ImageReader
 from PyPDF2 import PdfReader, PdfWriter
 from PIL import Image
 import time
-import fitz  # PyMuPDF
+import os
+import json
+
+# 🔹 Google Drive
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
 
 app = Flask(__name__)
 
@@ -15,6 +21,34 @@ app = Flask(__name__)
 @app.route("/ping")
 def ping():
     return "ok"
+
+
+# 🔹 Subir archivo a Drive
+def subir_a_drive(file_stream, filename):
+    SCOPES = ['https://www.googleapis.com/auth/drive']
+
+    creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS"])
+
+    creds = service_account.Credentials.from_service_account_info(
+        creds_dict, scopes=SCOPES
+    )
+
+    service = build('drive', 'v3', credentials=creds)
+
+    file_metadata = {
+        'name': filename,
+        'parents': ['1N184C4DQfz7cY085TdLl8DXks8ZSkyx3']  # 👈 REEMPLAZAR
+    }
+
+    media = MediaIoBaseUpload(file_stream, mimetype='application/pdf')
+
+    file = service.files().create(
+        body=file_metadata,
+        media_body=media,
+        fields='id'
+    ).execute()
+
+    return file.get('id')
 
 
 # 🔹 Endpoint principal
@@ -31,24 +65,30 @@ def firmar_pdf():
         if not pdf_url:
             return {"error": "Falta pdf_url"}, 400
 
-        # 🔹 Descargar PDF
-        pdf_response = requests.get(pdf_url)
+        # 🔹 Descargar PDF (IMPORTANTE: headers)
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/pdf"
+        }
+
+        pdf_response = requests.get(pdf_url, headers=headers)
+
         if pdf_response.status_code != 200:
             return {"error": "No se pudo descargar el PDF"}, 400
 
         pdf_bytes = pdf_response.content
 
-        # 🔹 Función para procesar firmas
+        # 🔹 Función para procesar firma
         def procesar_firma(url):
             if not url:
                 return None
 
-            headers = {
+            headers_img = {
                 "User-Agent": "Mozilla/5.0",
                 "Accept": "image/*"
             }
 
-            r = requests.get(url, headers=headers)
+            r = requests.get(url, headers=headers_img)
 
             if r.status_code != 200:
                 return None
@@ -58,7 +98,7 @@ def firmar_pdf():
 
             img = Image.open(BytesIO(r.content)).convert("RGBA")
 
-            # eliminar fondo negro
+            # 🔥 eliminar fondo negro
             background = Image.new("RGB", img.size, (255, 255, 255))
             background.paste(img, mask=img.split()[3])
 
@@ -130,54 +170,25 @@ def firmar_pdf():
         writer.write(output)
         output.seek(0)
 
-        # 🔹 Respuesta final
-        return send_file(
-            output,
-            download_name="Prime_Firma_PDF_Files/firmado_" + str(int(time.time())) + ".pdf",
-            as_attachment=False,
-            mimetype="application/pdf"
-        )
-     except Exception as e:
-        print("ERROR OCR:", str(e))
-        return {"error": str(e)}, 500
+        # 🔹 Nombre archivo
+        filename = f"firmado_{int(time.time())}.pdf"
 
-@app.route("/imagen", methods=["GET"])
-def generar_imagen():
-    try:
-        pdf_url = request.args.get("pdf_url")
+        # 🔹 Subir a Drive
+        file_id = subir_a_drive(output, filename)
 
-        if not pdf_url:
-            return {"error": "Falta pdf_url"}, 400
+        # 🔥 Ruta que AppSheet entiende
+        ruta_appsheet = f"Prime_Firma_PDF_Files_/{filename}"
 
-        headers = {
-            "User-Agent": "Mozilla/5.0",
-            "Accept": "application/pdf"
+        return {
+            "file": ruta_appsheet,
+            "file_id": file_id
         }
-
-        response = requests.get(pdf_url, headers=headers)
-
-        if response.status_code != 200:
-            return {"error": "No se pudo descargar PDF"}, 400
-
-        pdf_bytes = response.content
-
-        # 🔥 Convertir PDF → imagen (primera página)
-        pdf = fitz.open(stream=pdf_bytes, filetype="pdf")
-        page = pdf[0]
-
-        zoom = 2  # mayor resolución (mejor OCR)
-        mat = fitz.Matrix(zoom, zoom)
-
-        pix = page.get_pixmap(matrix=mat)
-
-        img_bytes = pix.tobytes("png")
-
-        return send_file(
-            BytesIO(img_bytes),
-            mimetype="image/png",
-            download_name="ocr.png"
-        )
 
     except Exception as e:
         print("ERROR:", str(e))
         return {"error": str(e)}, 500
+
+
+# 🔹 Run
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 3000)))
