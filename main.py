@@ -10,7 +10,6 @@ import os
 import json
 import traceback
 
-# 🔹 Google Drive
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
@@ -18,13 +17,11 @@ from googleapiclient.http import MediaIoBaseUpload
 app = Flask(__name__)
 
 
-# 🔹 Health check
 @app.route("/ping")
 def ping():
     return "ok"
 
 
-# 🔹 Subir archivo a Drive
 def subir_a_drive(file_stream, filename):
     SCOPES = ['https://www.googleapis.com/auth/drive']
 
@@ -38,7 +35,7 @@ def subir_a_drive(file_stream, filename):
 
     file_metadata = {
         'name': filename,
-        'parents': ['1N184C4DQfz7cY085TdLl8DXks8ZSkyx3']  # 🔴 REEMPLAZAR
+        'parents': ['1N184C4DQfz7cY085TdLl8DXks8ZSkyx3']  # ✔ YA PUESTO
     }
 
     media = MediaIoBaseUpload(file_stream, mimetype='application/pdf')
@@ -52,7 +49,6 @@ def subir_a_drive(file_stream, filename):
     return file.get('id')
 
 
-# 🔹 Procesar firma
 def procesar_firma(url):
     if not url:
         return None
@@ -72,7 +68,6 @@ def procesar_firma(url):
 
     img = Image.open(BytesIO(r.content)).convert("RGBA")
 
-    # eliminar fondo negro
     background = Image.new("RGB", img.size, (255, 255, 255))
     background.paste(img, mask=img.split()[3])
 
@@ -83,7 +78,6 @@ def procesar_firma(url):
     return ImageReader(buffer)
 
 
-# 🔹 Endpoint principal
 @app.route("/firmar", methods=["GET"])
 def firmar_pdf():
     try:
@@ -96,7 +90,6 @@ def firmar_pdf():
         if not pdf_url:
             return {"error": "Falta pdf_url"}, 400
 
-        # 🔹 Descargar PDF
         headers = {
             "User-Agent": "Mozilla/5.0",
             "Accept": "application/pdf"
@@ -109,27 +102,22 @@ def firmar_pdf():
 
         pdf_bytes = pdf_response.content
 
-        # 🔹 Procesar firmas
         firma1 = procesar_firma(firma_url)
         firma2 = procesar_firma(firma2_url)
 
-        # 🔹 Leer PDF original
         original = PdfReader(BytesIO(pdf_bytes))
         last_page = original.pages[-1]
         width = float(last_page.mediabox.width)
 
-        # 🔹 Crear overlay
         packet = BytesIO()
         c = canvas.Canvas(packet)
 
-        # Firma derecha
         if firma1:
             c.drawImage(firma1, x=width - 300, y=270, width=140, height=40, mask='auto')
             if fecha1:
                 c.setFont("Helvetica", 8)
                 c.drawString(width - 150, 280, f"Fecha Firma: {fecha1}")
 
-        # Firma izquierda
         if firma2:
             c.drawImage(firma2, x=30, y=270, width=140, height=40, mask='auto')
             if fecha2:
@@ -139,7 +127,6 @@ def firmar_pdf():
         c.save()
         packet.seek(0)
 
-        # 🔹 Merge PDF
         overlay = PdfReader(packet)
         overlay_page = overlay.pages[0]
 
@@ -155,30 +142,24 @@ def firmar_pdf():
         writer.write(output)
         output.seek(0)
 
-        # 🔹 Nombre archivo
         filename = f"firmado_{int(time.time())}.pdf"
 
         print("SUBIENDO A DRIVE...")
-
-        # 🔹 Subir a Drive
         file_id = subir_a_drive(output, filename)
-
         print("FILE ID:", file_id)
 
-        # 🔹 Ruta para AppSheet
-        ruta_appsheet = f"Prime_Firma_PDF_Files_/{filename}"
+        ruta_appsheet = f"Prime_Firma_PDF_Files/{filename}"
 
         return {
             "file": ruta_appsheet,
             "file_id": file_id
         }
 
- 	except Exception as e:
-    	print("ERROR GENERAL:")
-    	traceback.print_exc()
-    	return {"error": str(e)}, 500
+    except Exception as e:
+        print("ERROR GENERAL:")
+        traceback.print_exc()
+        return {"error": str(e)}, 500
 
 
-		# 🔹 Run
-		if __name__ == "__main__":
-    	app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 3000)))
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 3000)))
