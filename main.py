@@ -1,16 +1,16 @@
 from flask import Flask, request, send_file
 import requests
-import time
 from io import BytesIO
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 from PyPDF2 import PdfReader, PdfWriter
 from PIL import Image
+import time
 
 app = Flask(__name__)
 
 
-# 🔹 Endpoint de prueba (health check)
+# 🔹 Health check
 @app.route("/ping")
 def ping():
     return "ok"
@@ -57,7 +57,7 @@ def firmar_pdf():
 
             img = Image.open(BytesIO(r.content)).convert("RGBA")
 
-            # 🔥 eliminar fondo negro
+            # eliminar fondo negro
             background = Image.new("RGB", img.size, (255, 255, 255))
             background.paste(img, mask=img.split()[3])
 
@@ -71,22 +71,17 @@ def firmar_pdf():
         firma1 = procesar_firma(firma_url)
         firma2 = procesar_firma(firma2_url)
 
-        # 🔹 Preparar PDF
+        # 🔹 Leer PDF original
         original = PdfReader(BytesIO(pdf_bytes))
         last_page = original.pages[-1]
-
         width = float(last_page.mediabox.width)
 
+        # 🔹 Crear overlay
         packet = BytesIO()
         c = canvas.Canvas(packet)
 
         # 🖊 FIRMA DERECHA
         if firma1:
-            img_w, img_h = firma1.getSize()
-            desired_h = 60
-            scale = desired_h / img_h
-            new_w = img_w * scale
-
             c.drawImage(
                 firma1,
                 x=width - 300,
@@ -102,11 +97,6 @@ def firmar_pdf():
 
         # 🖊 FIRMA IZQUIERDA
         if firma2:
-            img_w2, img_h2 = firma2.getSize()
-            desired_h2 = 60
-            scale2 = desired_h2 / img_h2
-            new_w2 = img_w2 * scale2
-
             c.drawImage(
                 firma2,
                 x=30,
@@ -124,34 +114,28 @@ def firmar_pdf():
         packet.seek(0)
 
         # 🔹 Merge PDF
-        try:
-            overlay = PdfReader(packet)
-            overlay_page = overlay.pages[0]
-        except:
-            overlay_page = None
+        overlay = PdfReader(packet)
+        overlay_page = overlay.pages[0]
 
         writer = PdfWriter()
 
         for i in range(len(original.pages)):
             page = original.pages[i]
-            if overlay_page and i == len(original.pages) - 1:
+            if i == len(original.pages) - 1:
                 page.merge_page(overlay_page)
             writer.add_page(page)
 
         output = BytesIO()
         writer.write(output)
-       output.seek(0)
+        output.seek(0)
 
+        # 🔹 Respuesta final
         return send_file(
             output,
             download_name="Prime_Firma_PDF_Files/firmado_" + str(int(time.time())) + ".pdf",
             as_attachment=False,
             mimetype="application/pdf"
         )
-
-    except Exception as e:
-        print("ERROR:", str(e))
-        return {"error": str(e)}, 500    )
 
     except Exception as e:
         print("ERROR:", str(e))
