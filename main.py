@@ -174,7 +174,7 @@ def firmar_pdf():
         filename = f"firmado_{int(time.time())}.pdf"
 
         # 🔹 Subir a Drive
-        try:
+    
             print("SUBIENDO A DRIVE...")
 
             file_id = subir_a_drive(output, filename)
