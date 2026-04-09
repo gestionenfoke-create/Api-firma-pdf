@@ -191,9 +191,9 @@ def firmar_pdf():
             import traceback
 
             except Exception as e:
-            print("ERROR GENERAL:")
-            traceback.print_exc()
-            return {"error": str(e)}, 500
+                print("ERROR GENERAL:")
+                traceback.print_exc()
+                return {"error": str(e)}, 500
 
 
 # 🔹 Run
