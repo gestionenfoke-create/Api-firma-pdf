@@ -4,3 +4,5 @@ PyPDF2
 reportlab
 pillow
 gunicorn
+pdf2image
+pymupdf
