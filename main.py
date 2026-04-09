@@ -174,19 +174,23 @@ def firmar_pdf():
         filename = f"firmado_{int(time.time())}.pdf"
 
         # 🔹 Subir a Drive
-        file_id = subir_a_drive(output, filename)
+        try:
+            print("SUBIENDO A DRIVE...")
 
-        # 🔥 Ruta que AppSheet entiende
-        ruta_appsheet = f"Prime_Firma_PDF_Files_/{filename}"
+            file_id = subir_a_drive(output, filename)
 
-        return {
-            "file": ruta_appsheet,
-            "file_id": file_id
-        }
+            print("FILE ID:", file_id)
 
-    except Exception as e:
-        print("ERROR:", str(e))
-        return {"error": str(e)}, 500
+            ruta_appsheet = f"Prime_Firma_PDF_Files/{filename}"
+
+            return {
+                "file": ruta_appsheet,
+                "file_id": file_id
+            }
+
+        except Exception as e:
+            print("ERROR SUBIENDO A DRIVE:", str(e))
+            return {"error": str(e)}, 500
 
 
 # 🔹 Run
