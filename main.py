@@ -1,4 +1,4 @@
-from flask import Flask, request, send_file
+from flask import Flask, request
 import requests
 from io import BytesIO
 from reportlab.pdfgen import canvas
@@ -8,6 +8,7 @@ from PIL import Image
 import time
 import os
 import json
+import traceback
 
 # 🔹 Google Drive
 from google.oauth2 import service_account
@@ -37,7 +38,7 @@ def subir_a_drive(file_stream, filename):
 
     file_metadata = {
         'name': filename,
-        'parents': ['1N184C4DQfz7cY085TdLl8DXks8ZSkyx3']  # 👈 REEMPLAZAR
+        'parents': ['1N184C4DQfz7cY085TdLl8DXks8ZSkyx3']  # 🔴 REEMPLAZAR
     }
 
     media = MediaIoBaseUpload(file_stream, mimetype='application/pdf')
@@ -51,11 +52,41 @@ def subir_a_drive(file_stream, filename):
     return file.get('id')
 
 
+# 🔹 Procesar firma
+def procesar_firma(url):
+    if not url:
+        return None
+
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "image/*"
+    }
+
+    r = requests.get(url, headers=headers)
+
+    if r.status_code != 200:
+        return None
+
+    if "image" not in r.headers.get("Content-Type", ""):
+        return None
+
+    img = Image.open(BytesIO(r.content)).convert("RGBA")
+
+    # eliminar fondo negro
+    background = Image.new("RGB", img.size, (255, 255, 255))
+    background.paste(img, mask=img.split()[3])
+
+    buffer = BytesIO()
+    background.save(buffer, format="PNG")
+    buffer.seek(0)
+
+    return ImageReader(buffer)
+
+
 # 🔹 Endpoint principal
 @app.route("/firmar", methods=["GET"])
 def firmar_pdf():
     try:
-        # 🔹 Parámetros
         pdf_url = request.args.get("pdf_url")
         firma_url = request.args.get("firma_url")
         firma2_url = request.args.get("firma2_url")
@@ -65,7 +96,7 @@ def firmar_pdf():
         if not pdf_url:
             return {"error": "Falta pdf_url"}, 400
 
-        # 🔹 Descargar PDF (IMPORTANTE: headers)
+        # 🔹 Descargar PDF
         headers = {
             "User-Agent": "Mozilla/5.0",
             "Accept": "application/pdf"
@@ -74,39 +105,9 @@ def firmar_pdf():
         pdf_response = requests.get(pdf_url, headers=headers)
 
         if pdf_response.status_code != 200:
-            return {"error": "No se pudo descargar el PDF"}, 400
+            return {"error": "Error descargando PDF"}, 400
 
         pdf_bytes = pdf_response.content
-
-        # 🔹 Función para procesar firma
-        def procesar_firma(url):
-            if not url:
-                return None
-
-            headers_img = {
-                "User-Agent": "Mozilla/5.0",
-                "Accept": "image/*"
-            }
-
-            r = requests.get(url, headers=headers_img)
-
-            if r.status_code != 200:
-                return None
-
-            if "image" not in r.headers.get("Content-Type", ""):
-                return None
-
-            img = Image.open(BytesIO(r.content)).convert("RGBA")
-
-            # 🔥 eliminar fondo negro
-            background = Image.new("RGB", img.size, (255, 255, 255))
-            background.paste(img, mask=img.split()[3])
-
-            buffer = BytesIO()
-            background.save(buffer, format="PNG")
-            buffer.seek(0)
-
-            return ImageReader(buffer)
 
         # 🔹 Procesar firmas
         firma1 = procesar_firma(firma_url)
@@ -121,32 +122,16 @@ def firmar_pdf():
         packet = BytesIO()
         c = canvas.Canvas(packet)
 
-        # 🖊 FIRMA DERECHA
+        # Firma derecha
         if firma1:
-            c.drawImage(
-                firma1,
-                x=width - 300,
-                y=270,
-                width=140,
-                height=40,
-                mask='auto'
-            )
-
+            c.drawImage(firma1, x=width - 300, y=270, width=140, height=40, mask='auto')
             if fecha1:
                 c.setFont("Helvetica", 8)
                 c.drawString(width - 150, 280, f"Fecha Firma: {fecha1}")
 
-        # 🖊 FIRMA IZQUIERDA
+        # Firma izquierda
         if firma2:
-            c.drawImage(
-                firma2,
-                x=30,
-                y=270,
-                width=140,
-                height=40,
-                mask='auto'
-            )
-
+            c.drawImage(firma2, x=30, y=270, width=140, height=40, mask='auto')
             if fecha2:
                 c.setFont("Helvetica", 8)
                 c.drawString(180, 280, f"Fecha Firma: {fecha2}")
@@ -173,27 +158,25 @@ def firmar_pdf():
         # 🔹 Nombre archivo
         filename = f"firmado_{int(time.time())}.pdf"
 
+        print("SUBIENDO A DRIVE...")
+
         # 🔹 Subir a Drive
-    
-            print("SUBIENDO A DRIVE...")
+        file_id = subir_a_drive(output, filename)
 
-            file_id = subir_a_drive(output, filename)
+        print("FILE ID:", file_id)
 
-            print("FILE ID:", file_id)
+        # 🔹 Ruta para AppSheet
+        ruta_appsheet = f"Prime_Firma_PDF_Files_/{filename}"
 
-            ruta_appsheet = f"Prime_Firma_PDF_Files_/{filename}"
+        return {
+            "file": ruta_appsheet,
+            "file_id": file_id
+        }
 
-            return {
-                "file": ruta_appsheet,
-                "file_id": file_id
-            }
-
-            import traceback
-
-            except Exception as e:
-                print("ERROR GENERAL:")
-                traceback.print_exc()
-                return {"error": str(e)}, 500
+    except Exception as e:
+        print("ERROR GENERAL:")
+        traceback.print_exc()
+        return {"error": str(e)}, 500
 
 
 # 🔹 Run
