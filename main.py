@@ -188,8 +188,11 @@ def firmar_pdf():
                 "file_id": file_id
             }
 
-        except Exception as e:
-            print("ERROR SUBIENDO A DRIVE:", str(e))
+            import traceback
+
+            except Exception as e:
+            print("ERROR GENERAL:")
+            traceback.print_exc()
             return {"error": str(e)}, 500
 
 
