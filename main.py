@@ -140,14 +140,18 @@ def firmar_pdf():
 
         output = BytesIO()
         writer.write(output)
-        output.seek(0)
+       output.seek(0)
 
-    return send_file(
-        output,
-        download_name="Prime_Firma_PDF_Files/firmado_" + str(int(time.time())) + ".pdf",
-        as_attachment=False,
-        mimetype="application/pdf"
-    )
+        return send_file(
+            output,
+            download_name="Prime_Firma_PDF_Files/firmado_" + str(int(time.time())) + ".pdf",
+            as_attachment=False,
+            mimetype="application/pdf"
+        )
+
+    except Exception as e:
+        print("ERROR:", str(e))
+        return {"error": str(e)}, 500    )
 
     except Exception as e:
         print("ERROR:", str(e))
