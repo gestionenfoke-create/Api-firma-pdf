@@ -1,5 +1,6 @@
 from flask import Flask, request, send_file
 import requests
+import time
 from io import BytesIO
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
@@ -88,16 +89,16 @@ def firmar_pdf():
 
             c.drawImage(
                 firma1,
-                x=width - 200,
-                y=80,
-                width=new_w,
-                height=desired_h,
+                x=width - 300,
+                y=270,
+                width=140,
+                height=40,
                 mask='auto'
             )
 
             if fecha1:
                 c.setFont("Helvetica", 8)
-                c.drawString(width - 200, 70, f"Fecha Firma: {fecha1}")
+                c.drawString(width - 150, 280, f"Fecha Firma: {fecha1}")
 
         # 🖊 FIRMA IZQUIERDA
         if firma2:
@@ -108,16 +109,16 @@ def firmar_pdf():
 
             c.drawImage(
                 firma2,
-                x=80,
-                y=80,
-                width=new_w2,
-                height=desired_h2,
+                x=30,
+                y=270,
+                width=140,
+                height=40,
                 mask='auto'
             )
 
             if fecha2:
                 c.setFont("Helvetica", 8)
-                c.drawString(80, 70, f"Fecha Firma: {fecha2}")
+                c.drawString(180, 280, f"Fecha Firma: {fecha2}")
 
         c.save()
         packet.seek(0)
@@ -141,12 +142,12 @@ def firmar_pdf():
         writer.write(output)
         output.seek(0)
 
-        return send_file(
-            output,
-            download_name="firmado.pdf",
-            as_attachment=True,
-            mimetype="application/pdf"
-        )
+    return send_file(
+        output,
+        download_name="Prime_Firma_PDF_Files/firmado_" + str(int(time.time())) + ".pdf",
+        as_attachment=False,
+        mimetype="application/pdf"
+    )
 
     except Exception as e:
         print("ERROR:", str(e))
