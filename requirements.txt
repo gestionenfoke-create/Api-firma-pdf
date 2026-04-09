@@ -6,3 +6,5 @@ pillow
 gunicorn
 pdf2image
 pymupdf
+google-api-python-client
+google-auth
