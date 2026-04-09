@@ -6,6 +6,7 @@ from reportlab.lib.utils import ImageReader
 from PyPDF2 import PdfReader, PdfWriter
 from PIL import Image
 import time
+import fitz  # PyMuPDF
 
 app = Flask(__name__)
 
@@ -135,6 +136,41 @@ def firmar_pdf():
             download_name="Prime_Firma_PDF_Files/firmado_" + str(int(time.time())) + ".pdf",
             as_attachment=False,
             mimetype="application/pdf"
+        )
+     except Exception as e:
+        print("ERROR OCR:", str(e))
+        return {"error": str(e)}, 500
+
+@app.route("/imagen", methods=["GET"])
+def generar_imagen():
+    try:
+        pdf_url = request.args.get("pdf_url")
+
+        if not pdf_url:
+            return {"error": "Falta pdf_url"}, 400
+
+        response = requests.get(pdf_url)
+
+        if response.status_code != 200:
+            return {"error": "No se pudo descargar PDF"}, 400
+
+        pdf_bytes = response.content
+
+        # 🔥 Convertir PDF → imagen (primera página)
+        pdf = fitz.open(stream=pdf_bytes, filetype="pdf")
+        page = pdf[0]
+
+        zoom = 2  # mayor resolución (mejor OCR)
+        mat = fitz.Matrix(zoom, zoom)
+
+        pix = page.get_pixmap(matrix=mat)
+
+        img_bytes = pix.tobytes("png")
+
+        return send_file(
+            BytesIO(img_bytes),
+            mimetype="image/png",
+            download_name="ocr.png"
         )
 
     except Exception as e:
