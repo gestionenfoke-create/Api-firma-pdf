@@ -6,7 +6,6 @@ from reportlab.lib.utils import ImageReader
 from PyPDF2 import PdfReader, PdfWriter
 from PIL import Image
 import time
-import os
 import traceback
 
 app = Flask(__name__)
@@ -16,17 +15,6 @@ app = Flask(__name__)
 @app.route("/ping")
 def ping():
     return "ok"
-
-
-# 🔹 Servir archivos generados
-@app.route("/files/<filename>")
-def serve_file(filename):
-    filepath = f"/tmp/{filename}"
-
-    if not os.path.exists(filepath):
-        return {"error": "Archivo no encontrado"}, 404
-
-    return send_file(filepath, mimetype="application/pdf")
 
 
 # 🔹 Endpoint principal
@@ -75,6 +63,7 @@ def firmar_pdf():
 
             img = Image.open(BytesIO(r.content)).convert("RGBA")
 
+            # eliminar fondo
             background = Image.new("RGB", img.size, (255, 255, 255))
             background.paste(img, mask=img.split()[3])
 
@@ -88,7 +77,7 @@ def firmar_pdf():
         firma1 = procesar_firma(firma_url)
         firma2 = procesar_firma(firma2_url)
 
-        # 🔹 Leer PDF
+        # 🔹 Leer PDF original
         original = PdfReader(BytesIO(pdf_bytes))
         last_page = original.pages[-1]
         width = float(last_page.mediabox.width)
@@ -130,17 +119,16 @@ def firmar_pdf():
         writer.write(output)
         output.seek(0)
 
-        # 🔹 Guardar archivo temporal
+        # 🔹 Nombre archivo
         filename = f"firmado_{int(time.time())}.pdf"
-        filepath = f"/tmp/{filename}"
 
-        with open(filepath, "wb") as f:
-            f.write(output.getbuffer())
-
-        # 🔥 URL pública
-        public_url = f"https://api-firma-pdf.onrender.com/files/{filename}"
-        return public_url
-        
+        # 🔥 DEVOLVER PDF DIRECTAMENTE
+        return send_file(
+            output,
+            download_name=filename,
+            as_attachment=False,
+            mimetype="application/pdf"
+        )
 
     except Exception as e:
         print("ERROR GENERAL:")
