@@ -7,77 +7,29 @@ from PyPDF2 import PdfReader, PdfWriter
 from PIL import Image
 import time
 import os
-import json
 import traceback
-
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload
 
 app = Flask(__name__)
 
 
+# 🔹 Health check
 @app.route("/ping")
 def ping():
     return "ok"
 
 
-def subir_a_drive(file_stream, filename):
-    SCOPES = ['https://www.googleapis.com/auth/drive']
+# 🔹 Servir archivos generados
+@app.route("/files/<filename>")
+def serve_file(filename):
+    filepath = f"/tmp/{filename}"
 
-    creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS"])
+    if not os.path.exists(filepath):
+        return {"error": "Archivo no encontrado"}, 404
 
-    creds = service_account.Credentials.from_service_account_info(
-        creds_dict, scopes=SCOPES
-    )
-
-    service = build('drive', 'v3', credentials=creds)
-
-    file_metadata = {
-        'name': filename,
-        'parents': ['1N184C4DQfz7cY085TdLl8DXks8ZSkyx3']  # ✔ YA PUESTO
-    }
-
-    media = MediaIoBaseUpload(file_stream, mimetype='application/pdf')
-
-    file = service.files().create(
-        body=file_metadata,
-        media_body=media,
-        fields='id'
-    ).execute()
-
-    return file.get('id')
+    return send_file(filepath, mimetype="application/pdf")
 
 
-def procesar_firma(url):
-    if not url:
-        return None
-
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "image/*"
-    }
-
-    r = requests.get(url, headers=headers)
-
-    if r.status_code != 200:
-        return None
-
-    if "image" not in r.headers.get("Content-Type", ""):
-        return None
-
-    img = Image.open(BytesIO(r.content)).convert("RGBA")
-
-    background = Image.new("RGB", img.size, (255, 255, 255))
-    background.paste(img, mask=img.split()[3])
-
-    buffer = BytesIO()
-    background.save(buffer, format="PNG")
-    buffer.seek(0)
-
-    return ImageReader(buffer)
-
-
+# 🔹 Endpoint principal
 @app.route("/firmar", methods=["GET"])
 def firmar_pdf():
     try:
@@ -178,21 +130,26 @@ def firmar_pdf():
         writer.write(output)
         output.seek(0)
 
-        # 🔹 Nombre archivo
+        # 🔹 Guardar archivo temporal
         filename = f"firmado_{int(time.time())}.pdf"
+        filepath = f"/tmp/{filename}"
 
-        # 🔥 DEVOLVER PDF (AppSheet lo guarda automáticamente)
-        return send_file(
-            output,
-            download_name=filename,
-            as_attachment=True,
-            mimetype="application/pdf"
-        )
+        with open(filepath, "wb") as f:
+            f.write(output.getbuffer())
+
+        # 🔥 URL pública
+        public_url = f"https://api-firma-pdf.onrender.com/files/{filename}"
+
+        return {
+            "file": public_url
+        }
 
     except Exception as e:
-        import traceback
+        print("ERROR GENERAL:")
         traceback.print_exc()
         return {"error": str(e)}, 500
 
+
+# 🔹 Run local (Render usa gunicorn)
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 3000)))
+    app.run(host="0.0.0.0", port=3000)
