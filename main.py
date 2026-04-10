@@ -139,10 +139,8 @@ def firmar_pdf():
 
         # 🔥 URL pública
         public_url = f"https://api-firma-pdf.onrender.com/files/{filename}"
-
-        return {
-            "file": public_url
-        }
+        return public_url
+        
 
     except Exception as e:
         print("ERROR GENERAL:")
